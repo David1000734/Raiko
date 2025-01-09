@@ -4,11 +4,14 @@ import asyncprawcore as apc
 import raiko.misc.customException as ex     # Custom exceptions
 from discord import SyncWebhook             # Connect to webhooks
 from discord.ext import commands
+from raiko.types import parameters          # Global class
 
 
 class Reddit(commands.Cog):
     def __init__(self, client):
         self.client = client
+        # reddit_obj = parameters.handler.Get_Server().Get_Reddit()
+        # self.reddit_post = reddit_obj.Get_Post()
         self.reddit_post = []        # Store current posts
         self.reddit_instance = None  # The reddit API
         self.reddit_Task = []        # Running total of tasks created

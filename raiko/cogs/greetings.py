@@ -1,8 +1,11 @@
 import os
+import logging
 from discord.ext import commands
 from raiko.types import parameters      # noqa F401
 
 discord_botspam = os.getenv("DISCORD_BOTSPAM")
+log = logging.getLogger(__name__)
+# log.setLevel(logging.DEBUG)
 
 
 class Greetings (commands.Cog):
@@ -13,11 +16,18 @@ class Greetings (commands.Cog):
     @commands.command()
     async def hello(self, ctx):
         # Do stuff with global variable
-        # print(f"Before: {parameters.server_list}")      # DEBUG
-        # parameters.server_list[55] = "Good morning sir"     # DEBUG
-        # print(f"After: {parameters.server_list}")       # DEBUG
+        log.debug(f"Before: {parameters.Server_Handler.server_list}")
+        # parameters.Server_Handler.server_list[55] = "Good morning sir"     # DEBUG # noqa E501
+        log.debug(f"After: {parameters.Server_Handler.server_list}")
 
         await ctx.send("Hello from the bot!")
+
+    @commands.command()
+    async def hi(self, ctx):
+        if (parameters.handler.remove_server(55)):
+            log.debug(f"Success {parameters.Server_Handler.server_list}")
+        else:
+            log.debug(f'Failed: {parameters.Server_Handler.server_list}')
 
     # Event, someone joins the server
     @commands.Cog.listener()

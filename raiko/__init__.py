@@ -1,4 +1,5 @@
 import discord
+import logging
 from discord.ext import commands
 
 intents = discord.Intents.all()
@@ -7,6 +8,13 @@ intents.members = True
 # Commands will be predicated with a '!',
 # Enables all intents from developer portal
 client = commands.Bot(command_prefix='!', intents=intents)
+
+# Logging
+log = logging.basicConfig(
+    format="%(asctime)s :: %(levelname)s :: %(name)s :: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=logging.INFO
+)
 
 
 async def load_extensions() -> None:
