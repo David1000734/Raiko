@@ -9,9 +9,15 @@ intents.members = True
 # Enables all intents from developer portal
 client = commands.Bot(command_prefix='!', intents=intents)
 
+# Color. There is a better way to do this...
+MAGENTA = "\033[35m"
+GRAY = "\033[90m"
+RESET = "\x1b[0m"
+BLUE = "\033[34m"
+
 # Logging
 log = logging.basicConfig(
-    format="%(asctime)s :: %(levelname)s :: %(name)s :: %(message)s",
+    format=f"{GRAY} %(asctime)s  {BLUE}%(levelname)s  {MAGENTA}%(name)s \t{RESET}%(message)s",  # noqa E501
     datefmt="%Y-%m-%d %H:%M:%S",
     level=logging.INFO
 )

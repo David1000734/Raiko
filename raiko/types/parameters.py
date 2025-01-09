@@ -6,7 +6,7 @@ import logging
 from discord.ext.commands import Bot
 from raiko.types.server_type import Server
 
-log = logging.getLogger(f'discord.{__name__}')
+log = logging.getLogger(__name__)
 # Use to show this file's debug but NOT Discord's debug logs
 # log.setLevel(logging.DEBUG)
 
