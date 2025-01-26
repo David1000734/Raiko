@@ -1,9 +1,8 @@
-import os
 import logging
 from discord.ext import commands
-from raiko.types import parameters      # noqa F401
+from raiko.types import parameters, token_importer      # noqa F401
 
-discord_botspam = os.getenv("DISCORD_BOTSPAM")
+discord_botspam = token_importer("DISCORD_BOTSPAM")
 log = logging.getLogger(__name__)
 # log.setLevel(logging.DEBUG)
 

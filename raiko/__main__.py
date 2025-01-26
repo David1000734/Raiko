@@ -1,5 +1,5 @@
 from raiko import client, load_extensions, log
-from raiko.types import parameters  # noqa F401
+from raiko.types import parameters, token_importer
 
 
 # Upon bot is ready, exectute this constructor event
@@ -13,21 +13,13 @@ async def on_ready():
 
     # parameters.handler.add_server()
 
-    print("Hello I'm ready, enter a command!")
-    print("------------------------------")
+    log.info("Hello I'm ready for a command!")
+    log.info("------------------------------")
     pass
 # Constructor, END
 
+
 # Start of main()
 if (__name__ == "__main__"):
-    import os
-
-    # Import discord token
-    discord_token = os.getenv("DISCORD_TOKEN")
-
-    if (discord_token is not None):
-        # Run the bot. We will be using the discord logger as well.
-        client.run(discord_token, log_handler=log)
-    else:
-        print("Unable to find Discord Token.")
-# Main, END
+    # Run the bot. We will be using the discord logger as well.
+    client.run(token_importer("DISCORD_TOKEN"), log_handler=None)

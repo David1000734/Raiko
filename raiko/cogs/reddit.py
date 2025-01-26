@@ -4,7 +4,7 @@ import asyncprawcore as apc
 import raiko.misc.customException as ex     # Custom exceptions
 from discord import SyncWebhook             # Connect to webhooks
 from discord.ext import commands
-from raiko.types import parameters          # Global class
+from raiko.types import parameters, token_importer    # Global class
 
 
 class Reddit(commands.Cog):
@@ -18,15 +18,13 @@ class Reddit(commands.Cog):
 
     # *************** Non-command/event Functions ***************
     async def init_Reddit(self):
-        import os
-
         # Instance must be created within async function
         # to allow for async for to work.
         self.reddit_instance = asyncpraw.Reddit(
-            client_id=os.getenv("REDDIT_CLIENT_ID"),
-            client_secret=os.getenv("REDDIT_SECRET"),
-            username=os.getenv("REDDIT_USERNAME"),
-            password=os.getenv("REDDIT_PASSWORD"),
+            client_id=token_importer("REDDIT_CLIENT_ID"),
+            client_secret=token_importer("REDDIT_SECRET"),
+            username=token_importer("REDDIT_USERNAME"),
+            password=token_importer("REDDIT_PASSWORD"),
             user_agent="test_bot"
         )
 

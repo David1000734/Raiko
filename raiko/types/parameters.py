@@ -7,10 +7,11 @@ from discord.ext.commands import Bot
 from raiko.types.server_type import Server
 
 log = logging.getLogger(__name__)
-# Use to show this file's debug but NOT Discord's debug logs
+# Use to show only this file's log info
 # log.setLevel(logging.DEBUG)
 
 
+# region Server Handler
 def init(client: Bot):
     '''
     Initilization of global variables. ONLY the main should call this.
@@ -27,7 +28,7 @@ def init(client: Bot):
         handler.add_server(guild.id, guild.name)
         pass
 
-    log.debug(f'Build server list is: {handler.server_list}')
+    log.debug(f'Built initial server list is: {handler.server_list}')
 
 
 class Server_Handler(object):
@@ -66,9 +67,14 @@ class Server_Handler(object):
 
         return server_removed
 
-    def get_server(self, key) -> Server:
-
-        pass
+    def get_server(self, key: str | int) -> Server:
+        '''
+        Provide the server if exist, None otherwise
+        '''
+        if (key) in self.server_list:
+            return self.server_list[key]
+        # If key does not exist in list, return None
+        return None
 
     def __del__(self):
         # Deconstructor
