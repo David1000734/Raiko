@@ -1,10 +1,15 @@
 import asyncio                              # Import time keeping/looping
 import asyncpraw                            # Reddit api. Async version
 import asyncprawcore as apc
+import logging
 import raiko.misc.customException as ex     # Custom exceptions
 from discord import SyncWebhook             # Connect to webhooks
 from discord.ext import commands
 from raiko.types import parameters, token_importer    # Global class
+
+log = logging.getLogger(__name__)
+# Set level for this file only
+# log.setLevel(logging.DEBUG)
 
 
 class Reddit(commands.Cog):
@@ -16,7 +21,7 @@ class Reddit(commands.Cog):
         self.reddit_instance = None  # The reddit API
         self.reddit_Task = []        # Running total of tasks created
 
-    # *************** Non-command/event Functions ***************
+    # region Non-command/event Functions
     async def init_Reddit(self):
         # Instance must be created within async function
         # to allow for async for to work.
@@ -28,7 +33,73 @@ class Reddit(commands.Cog):
             user_agent="test_bot"
         )
 
-    async def background_Task(self, sub_Name, get_limit, sleep_time, hook_URL):
+    async def background_task(
+            self, sub_name: str, post_limit: str,
+            sleep_time: str, hook_URL: str
+    ) -> None:
+        """
+        Reddit background task to be continuously ran. Each post it gets will
+        be placed into a global array and will keep track if it gets
+        over the limit
+
+        :param sub_name: Name of the subreddit to be added.
+        :param post_limit: Specified limit to number of post to get.
+        :param sleep_time: How long should the task wait in-between running.
+        :param hook_URL: URL of the webhook this task will use to post
+
+        :note: This task does NOT do ANY checks. All inputs are assumed valid.
+        """
+        await self.client.wait_until_ready()        # Don't run while sleeping
+        # Only done once.
+
+        # Get the subreddit
+        subreddit = await self.reddit_instance.subreddit(sub_name, fetch=True)
+        webhook = SyncWebhook.from_url(hook_URL)    # Connect to webhook
+        # In event of a post being deleted, the oldest post is always deleted.
+        # This causes the list to iteratively re-post old post until resetting.
+        # Plus 1 buffer to guard against 1 post deletion.
+        queue = [item async for item in subreddit.hot(limit=post_limit + 1)]
+
+        log.debug(
+            f"\"{sub_name}\" queue populated: {queue} Type: {type(queue)}"
+        )
+
+        # Use FIFO (First in First out) Queue for this implimenation
+        # Time loop here
+        while not self.client.is_closed():
+            async for (submission) in subreddit.hot(limit=post_limit):
+                # Check if the new posts we just got is already in the list
+                if (submission not in queue):
+                    # New post found, post it and update list
+                    webhook.send(
+                        submission.title + ' ' + submission.url +
+                        "\nhttps://www.reddit.com" +
+                        submission.permalink
+                    )
+
+                    log.debug(
+                        "New item appending to list. " +
+                        f"[\"{submission.title}\", {submission.id}]"
+                    )
+
+                    # Add to new list, just don't remove anything
+                    queue.insert(0, submission)     # Push to top of list
+                    queue.pop()                     # Pop end of list
+                else:
+                    # If it is in the list, we don't care about it.
+                    log.debug(
+                        "Already in list. " +
+                        f"[\"{submission.title}\", {submission.id}]"
+                    )
+                # if, END
+            # Async for, END
+
+            log.debug(f"\"{sub_name}\" Queue: {queue}.")
+            await asyncio.sleep(sleep_time)         # Run every 'X' seconds
+        # while, END
+    # background task, END
+
+    async def background_task_DEPRECATED(self, sub_Name, get_limit, sleep_time, hook_URL):  # noqa E501
         """
         Reddit background task to be continuously ran. Each post it gets will
         be placed into a global array and will keep track if it gets
@@ -173,8 +244,8 @@ class Reddit(commands.Cog):
         # No exceptions were raised, thus, valid input
 
         # Create time loop. Continuously run this function.
-        current_tasks = self.client.loop.create_task(self.background_Task(
-                        sub_Name=arg, get_limit=5,
+        current_tasks = self.client.loop.create_task(self.background_task(
+                        sub_name=arg, post_limit=5,
                         sleep_time=900, hook_URL=URL))
 
         # Set the name to be the same as the subreddit
@@ -205,7 +276,7 @@ class Reddit(commands.Cog):
                 self.reddit_Task.remove(currSub)
 
                 await ctx.send(
-                    "Successfully removed subreddit: \"%s\", from tasks." %
+                    "Successfully removed subreddit: \"%s\" from tasks." %
                     (arg)
                 )
 
@@ -285,7 +356,7 @@ class Reddit(commands.Cog):
             + "```"
         )
 
-    # *************** Discord command/event Functions ***************
+    # region Discord command/event Functions
     @commands.command()
     async def reddit(self, ctx, *arg):
         """
@@ -359,11 +430,16 @@ class Reddit(commands.Cog):
 
         # Handle exceptions that comes from inside reddit_add function.
         except apc.AsyncPrawcoreException as error:
-            await ctx.send("Subreddit: \"%s\" Error: %s" % (arg[1], error))
+            log.warning(
+                "Subreddit: \"%s\" has encountered an issue: %s"
+                % (arg[1], error)
+            )
+            await ctx.send("Encountered an issue with that subreddit.")
 
         # Default catch all exceptions
         except Exception as error:
-            await ctx.send("Unknown error has occured: %s" % error)
+            log.error("Unknown error for Reddit has occured: %s" % error)
+            await ctx.send("Unknown Error, please check logs.")
 
         # try except, END
     # Reddit command block, END
