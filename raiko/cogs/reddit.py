@@ -35,6 +35,68 @@ class Reddit(commands.Cog):
 
     async def background_task(
             self, sub_name: str, post_limit: str,
+            sleep_time: str, hook_URL: str, initial: bool = False
+    ) -> None:
+        """
+        Reddit background task to be continuously ran. Each post it gets will
+        be placed into a global array and will keep track if it gets
+        over the limit
+
+        :param sub_name: Name of the subreddit to be added.
+        :param post_limit: Specified limit to number of post to get.
+        :param sleep_time: How long should the task wait in-between running.
+        :param hook_URL: URL of the webhook this task will use to post.
+        :param initial: If the initial X post should be put on discord.
+
+        :note: This task does NOT do ANY checks. All inputs are assumed valid.
+        """
+        await self.client.wait_until_ready()        # Don't run while sleeping
+        # Only done once.
+
+        # Get the subreddit
+        subreddit = await self.reddit_instance.subreddit(sub_name, fetch=True)
+        webhook = SyncWebhook.from_url(hook_URL)    # Connect to webhook
+        queue = []                      # Submission Queue
+        if (initial):
+            queue = [item async for item in subreddit.hot(limit=post_limit)]
+
+        log.debug(
+            f"\"{sub_name}\" queue populated: {queue} Type: {type(queue)}"
+        )
+
+        # Use FIFO (First in First out) Queue for this implimenation
+        # Time loop here
+        while not self.client.is_closed():
+            new_submissions = []
+            # Gather the "new" posts
+            async for (item) in subreddit.hot(limit=post_limit):
+                new_submissions.append(item)
+
+            # Get the different items between these two list
+            difference_list = list(set(new_submissions).difference(queue))
+
+            log.debug(
+                f"\"{sub_name}\" Queue: {queue}\nNew: {new_submissions}\n" +
+                f"Difference List: {difference_list}"
+            )
+
+            # Print whatever different items we found from above
+            for (item) in (difference_list):
+                # New post found, post it and update list
+                webhook.send(
+                    item.title + ' ' + item.url +
+                    "\nhttps://www.reddit.com" +
+                    item.permalink
+                )
+            # This is now our new queue
+            queue = new_submissions
+
+            await asyncio.sleep(sleep_time)         # Run every 'X' seconds
+        # while, END
+    # background task, END
+
+    async def background_task_DEPRECIATED(
+            self, sub_name: str, post_limit: str,
             sleep_time: str, hook_URL: str
     ) -> None:
         """
@@ -155,7 +217,7 @@ class Reddit(commands.Cog):
         # Create time loop. Continuously run this function.
         current_tasks = self.client.loop.create_task(self.background_task(
                         sub_name=arg, post_limit=5,
-                        sleep_time=900, hook_URL=URL))
+                        sleep_time=15, hook_URL=URL))
 
         # Set the name to be the same as the subreddit
         current_tasks.set_name(arg)
