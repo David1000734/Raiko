@@ -57,7 +57,8 @@ class Reddit(commands.Cog):
         subreddit = await self.reddit_instance.subreddit(sub_name, fetch=True)
         webhook = SyncWebhook.from_url(hook_URL)    # Connect to webhook
         queue = []                      # Submission Queue
-        if (initial):
+        if (not initial):
+            # Filling the queue would result in no initial posting
             queue = [item async for item in subreddit.hot(limit=post_limit)]
 
         log.debug(
