@@ -59,7 +59,9 @@ class Reddit(commands.Cog):
         queue = []                      # Submission Queue
         if (not initial):
             # Filling the queue would result in no initial posting
-            queue = [item async for item in subreddit.hot(limit=post_limit)]
+            queue = [item async for item in subreddit.top(
+                        limit=post_limit, time_filter="hour"
+                    )]
 
         log.debug(
             f"\"{sub_name}\" queue populated: {queue} Type: {type(queue)}"
@@ -70,7 +72,9 @@ class Reddit(commands.Cog):
         while not self.client.is_closed():
             new_submissions = []
             # Gather the "new" posts
-            async for (item) in subreddit.hot(limit=post_limit):
+            async for (item) in subreddit.top(
+                    limit=post_limit, time_filter="hour"
+                    ):
                 new_submissions.append(item)
 
             # Get the different items between these two list
