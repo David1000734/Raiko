@@ -19,7 +19,7 @@ async def on_ready():
 # Constructor, END
 
 
-# Start of main()
+# region Main
 if (__name__ == "__main__"):
     # Run the bot. We will be using the discord logger as well.
     client.run(token_importer("DISCORD_TOKEN"), log_handler=None)

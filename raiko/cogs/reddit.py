@@ -3,13 +3,88 @@ import asyncpraw                            # Reddit api. Async version
 import asyncprawcore as apc
 import logging
 import raiko.misc.customException as ex     # Custom exceptions
+import discord
 from discord import SyncWebhook             # Connect to webhooks
+from discord.ui import Button, View
 from discord.ext import commands
 from raiko.types import parameters, token_importer    # Global class
 
 log = logging.getLogger(__name__)
 # Set level for this file only
 # log.setLevel(logging.DEBUG)
+
+
+class Flair_View(View):
+    def __init__(self, ctx, flair_list):
+        super().__init__()
+        self.ctx = ctx
+        self.value = None
+        for (flair) in flair_list:
+            self.add_item(Flair_Button(label=flair, view=self))
+
+    @discord.ui.button(
+            label="Use All Flairs",
+            style=discord.ButtonStyle.blurple
+    )
+    async def button_callback(self, interaction, button):
+        button1 = [x for x in self.children if x.custom_id == "danger"][0]
+        button1.label = "Un-Dangerous"
+        button1.disabled = True
+        await interaction.response.edit_message(view=self)
+
+        self.value = "Clicked"
+
+    @discord.ui.button(
+            label="Dangerous",
+            style=discord.ButtonStyle.danger,
+            custom_id="danger"
+    )
+    async def danger_button_callback(self, interaction, button):
+        self.clear_items()
+        await interaction.response.send_message("Danger clicked.", view=self)
+
+        self.value = "Danger"
+        self.stop()
+
+    async def on_timeout(self):
+        await self.ctx.send("Timeout occured.")
+
+    async def on_error(self, interaction, error, item):
+        await interaction.response.send_message(str(error))
+
+    async def interaction_check(self, interaction) -> bool:
+        if (interaction.user != self.ctx.author):
+            await interaction.response.send_message("Only the author can interaction with this", ephemeral=True)    # noqa E501
+            return False
+        return True
+
+
+class Flair_Button(Button):
+    def __init__(self, label, view=None):
+        # Button will start off as disabled
+        super().__init__(
+            label=label,
+            style=discord.ButtonStyle.gray,
+            emoji="❌"
+        )
+        # Boolean specified what the NEXT click should do. Not the current one
+        self.to_be_enabled = True
+        self.MyView = view
+
+    async def callback(self, interaction):
+        if (self.to_be_enabled):
+            # Our "next" click should enable. That means enable now
+            self.style = discord.ButtonStyle.green
+            self.emoji = "✔"
+        else:
+            # Our "next" click should disable. That means disable now
+            self.style = discord.ButtonStyle.gray
+            self.emoji = "❌"
+        # Regardless of action above, flip the boolean.
+        self.to_be_enabled = not self.to_be_enabled
+
+        # Update the Button UI
+        await interaction.response.edit_message(view=self.MyView)
 
 
 class Reddit(commands.Cog):
@@ -34,8 +109,9 @@ class Reddit(commands.Cog):
         )
 
     async def background_task(
-            self, sub_name: str, post_limit: str,
-            sleep_time: str, hook_URL: str, initial: bool = False
+            self, sub_name: str, hook_URL: str,
+            post_limit: str = 5, sleep_time: str = 900,
+            initial: bool = False
     ) -> None:
         """
         Reddit background task to be continuously ran. Each post it gets will
@@ -59,22 +135,17 @@ class Reddit(commands.Cog):
         queue = []                      # Submission Queue
         if (not initial):
             # Filling the queue would result in no initial posting
-            queue = [item async for item in subreddit.top(
-                        limit=post_limit, time_filter="hour"
-                    )]
+            queue = [item async for item in subreddit.hot(limit=post_limit)]
 
         log.debug(
             f"\"{sub_name}\" queue populated: {queue} Type: {type(queue)}"
         )
 
-        # Use FIFO (First in First out) Queue for this implimenation
         # Time loop here
         while not self.client.is_closed():
             new_submissions = []
             # Gather the "new" posts
-            async for (item) in subreddit.top(
-                    limit=post_limit, time_filter="hour"
-                    ):
+            async for (item) in subreddit.hot(limit=post_limit):
                 new_submissions.append(item)
 
             # Get the different items between these two list
@@ -87,6 +158,10 @@ class Reddit(commands.Cog):
 
             # Print whatever different items we found from above
             for (item) in (difference_list):
+                # DEBUG
+                print(
+                    f"Link Flair: {item.link_flair_text}\nPost Name: {item.title}."     # noqa E501
+                )
                 # New post found, post it and update list
                 webhook.send(
                     item.title + ' ' + item.url +
@@ -100,13 +175,13 @@ class Reddit(commands.Cog):
         # while, END
     # background task, END
 
-    async def reddit_Add(self, arg, URL):
+    async def reddit_Add(self, ctx, subreddit_name, URL):
         """
         Function will attempt to create a new background task with
         the specified subreddit. All subreddit and webhook tests
         are also done here. If any fail, an exception is raised.
 
-        :param arg: The subreddit to add
+        :param subreddit_name: The subreddit to add
         :param URL: What is the URL of the webhook
 
         :note: All checks for the background task is done here
@@ -120,7 +195,7 @@ class Reddit(commands.Cog):
         # Iterate through the task list
         for idx, currSub in enumerate(self.reddit_Task):
             # Search for a task with the that subreddit name
-            if (currSub.get_name() == arg):
+            if (currSub.get_name() == subreddit_name):
                 found = True
                 break               # Exit loop
             # if task_name = name, END
@@ -140,10 +215,12 @@ class Reddit(commands.Cog):
 
         # Find valid subreddits by attempting to get from them.
         # Get the subreddit
-        subRed = await self.reddit_instance.subreddit(arg, fetch=True)
+        subreddit = await self.reddit_instance.subreddit(
+            subreddit_name, fetch=True
+        )
 
         # Attempt to search it
-        async for submission in subRed.new(limit=3):
+        async for submission in subreddit.new(limit=3):
             pass
         # *************** Valid Subs, END ***************
 
@@ -151,15 +228,52 @@ class Reddit(commands.Cog):
         SyncWebhook.from_url(URL)       # Throws an exception if not found
 
         # *************** Webhook URL, END ***************
+
+        # *************** Existance of Flairs ***************
+        # Find list of flairs subreddit has
+        subreddit_flair_list = [
+            x['text'] async for x in subreddit.flair.link_templates
+        ]
+
+        # https://www.youtube.com/watch?v=kNUuYEWGOxA
+        # https://www.reddit.com/r/redditdev/comments/njj4y0/getting_list_of_available_flairs_for_a_subreddit/
+        # https://www.reddit.com/r/redditdev/comments/njj4y0/getting_list_of_available_flairs_for_a_subreddit/
+
+        # Determine if the subreddit has avalibles flairs
+        if (subreddit_flair_list):
+            print("Some flairs were found.")        # DEBUG
+            # button = Flair_Button("Reusable")
+
+            # view = View()
+            # view.add_item(button)
+            # await ctx.send("Button Prompt", view=view)
+
+            view = Flair_View(ctx, subreddit_flair_list)
+            await ctx.send("View Prompt", view=view)
+            timedout = await view.wait()
+
+            # DEBUG
+            if (not timedout and view.value == "Danger"):
+                await ctx.send("Not timed out and danger")
+            else:
+                await ctx.send("Timedout or not danger.")
+        else:
+            print("Nothing at all")     # DEBUG
+
+        # *************** Existance of Flairs, END ***************
+
         # No exceptions were raised, thus, valid input
 
         # Create time loop. Continuously run this function.
-        current_tasks = self.client.loop.create_task(self.background_task(
-                        sub_name=arg, post_limit=5,
-                        sleep_time=900, hook_URL=URL))
+        current_tasks = self.client.loop.create_task(
+            self.background_task(
+                sub_name=subreddit_name, hook_URL=URL,
+                initial=True
+            )
+        )
 
         # Set the name to be the same as the subreddit
-        current_tasks.set_name(arg)
+        current_tasks.set_name(subreddit_name)
         self.reddit_Task.append(current_tasks)      # store to array
         # If valid sub, END
     # reddit_add, END
@@ -288,7 +402,7 @@ class Reddit(commands.Cog):
                         raise ex.UnknownCommand()
                     else:
                         # arg[1] contains the word
-                        await self.reddit_Add(arg[1], arg[2])
+                        await self.reddit_Add(ctx, arg[1], arg[2])
 
                 # Attempt to remove a reddit background task if one exist
                 case "remove":
@@ -344,12 +458,13 @@ class Reddit(commands.Cog):
                 "Subreddit: \"%s\" has encountered an issue: %s"
                 % (arg[1], error)
             )
-            await ctx.send("Encountered an issue with that subreddit.")
+            await ctx.send(f"Encountered an issue with \"{arg[1]}\".")
 
         # Default catch all exceptions
         except Exception as error:
             log.error("Unknown error for Reddit has occured: %s" % error)
             await ctx.send("Unknown Error, please check logs.")
+            raise
 
         # try except, END
     # Reddit command block, END
