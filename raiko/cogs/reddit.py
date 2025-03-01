@@ -19,32 +19,57 @@ class Flair_View(View):
         super().__init__()
         self.ctx = ctx
         self.value = None
+
+        done_button = [x for x in self.children if x.custom_id == "Done"][0]
+
         for (flair) in flair_list:
-            self.add_item(Flair_Button(label=flair, view=self))
+            self.add_item(Flair_Button(flair, self, done_button))
 
     @discord.ui.button(
-            label="Use All Flairs",
-            style=discord.ButtonStyle.blurple
+        disabled=True,
+        label="DONE",
+        style=discord.ButtonStyle.primary,
+        custom_id="Done"
     )
-    async def button_callback(self, interaction, button):
-        button1 = [x for x in self.children if x.custom_id == "danger"][0]
-        button1.label = "Un-Dangerous"
-        button1.disabled = True
-        await interaction.response.edit_message(view=self)
+    async def done_button_callback(self, interaction, button):
+        flair_list = []
 
-        self.value = "Clicked"
+        # Iterate through all the buttons and find only those
+        # with the sucess style (IE. has been clicked)
+        for (x) in self.children:
+            if (x.style == discord.ButtonStyle.success):
+                flair_list.append(x.label)
 
-    @discord.ui.button(
-            label="Dangerous",
-            style=discord.ButtonStyle.danger,
-            custom_id="danger"
-    )
-    async def danger_button_callback(self, interaction, button):
         self.clear_items()
-        await interaction.response.send_message("Danger clicked.", view=self)
+        await interaction.response.send_message(
+            f"Allowed flairs: {", ".join(flair_list)}",
+            view=self
+        )
 
         self.value = "Danger"
-        self.stop()
+        # self.stop()
+
+    @discord.ui.button(
+        label="Allow All",
+        style=discord.ButtonStyle.primary
+    )
+    async def allow_all_button_callback(self, interaction, button):
+        flair_list = []
+
+        # Iterate through all the buttons and select all
+        for (x) in self.children:
+            # Don't include "DONE" and "Allow All"
+            if (x.style != discord.ButtonStyle.primary):
+                flair_list.append(x.label)
+
+        self.clear_items()
+        await interaction.response.send_message(
+            f"Allowed flairs: {", ".join(flair_list)}",
+            view=self
+        )
+
+        self.value = flair_list
+        # self.stop()
 
     async def on_timeout(self):
         await self.ctx.send("Timeout occured.")
@@ -60,28 +85,41 @@ class Flair_View(View):
 
 
 class Flair_Button(Button):
-    def __init__(self, label, view=None):
+    def __init__(self, label, view, done_button):
+        '''
+        Serves as the actual flair buttons the user will interact
+        with to specify which flairs they like.
+
+        :param label: What should the button say
+        :param view: The view used to house this button. (Parent)
+        :param done_button: The "confirm" button
+        '''
         # Button will start off as disabled
         super().__init__(
             label=label,
-            style=discord.ButtonStyle.gray,
+            style=discord.ButtonStyle.secondary,
             emoji="❌"
         )
         # Boolean specified what the NEXT click should do. Not the current one
         self.to_be_enabled = True
         self.MyView = view
+        self.done_button = done_button
 
     async def callback(self, interaction):
+
         if (self.to_be_enabled):
             # Our "next" click should enable. That means enable now
-            self.style = discord.ButtonStyle.green
+            self.style = discord.ButtonStyle.success
             self.emoji = "✔"
         else:
             # Our "next" click should disable. That means disable now
-            self.style = discord.ButtonStyle.gray
+            self.style = discord.ButtonStyle.secondary
             self.emoji = "❌"
         # Regardless of action above, flip the boolean.
         self.to_be_enabled = not self.to_be_enabled
+
+        # Enable the "Done" button
+        self.done_button.disabled = False
 
         # Update the Button UI
         await interaction.response.edit_message(view=self.MyView)
@@ -137,10 +175,6 @@ class Reddit(commands.Cog):
             # Filling the queue would result in no initial posting
             queue = [item async for item in subreddit.hot(limit=post_limit)]
 
-        log.debug(
-            f"\"{sub_name}\" queue populated: {queue} Type: {type(queue)}"
-        )
-
         # Time loop here
         while not self.client.is_closed():
             new_submissions = []
@@ -174,6 +208,21 @@ class Reddit(commands.Cog):
             await asyncio.sleep(sleep_time)         # Run every 'X' seconds
         # while, END
     # background task, END
+
+    async def flair_finder(self, subreddit) -> list:
+        # Find list of flairs subreddit may have
+        try:
+            flair_list = [
+                x['text'] async for x in subreddit.flair.link_templates
+            ]
+        except apc.Forbidden as ex:
+            # If a subreddit does not allow viewing of their flairs,
+            # just send an empty list.
+            log.debug(
+                f"\"{subreddit.display_name}\" {ex} ({type(ex).__name__})"
+            )
+            flair_list = []
+        return flair_list
 
     async def reddit_Add(self, ctx, subreddit_name, URL):
         """
@@ -230,11 +279,7 @@ class Reddit(commands.Cog):
         # *************** Webhook URL, END ***************
 
         # *************** Existance of Flairs ***************
-        # Find list of flairs subreddit has
-        subreddit_flair_list = [
-            x['text'] async for x in subreddit.flair.link_templates
-        ]
-
+        subreddit_flair_list = await self.flair_finder(subreddit)
         # https://www.youtube.com/watch?v=kNUuYEWGOxA
         # https://www.reddit.com/r/redditdev/comments/njj4y0/getting_list_of_available_flairs_for_a_subreddit/
         # https://www.reddit.com/r/redditdev/comments/njj4y0/getting_list_of_available_flairs_for_a_subreddit/
@@ -242,14 +287,13 @@ class Reddit(commands.Cog):
         # Determine if the subreddit has avalibles flairs
         if (subreddit_flair_list):
             print("Some flairs were found.")        # DEBUG
-            # button = Flair_Button("Reusable")
-
-            # view = View()
-            # view.add_item(button)
-            # await ctx.send("Button Prompt", view=view)
 
             view = Flair_View(ctx, subreddit_flair_list)
-            await ctx.send("View Prompt", view=view)
+            await ctx.send(
+                f"Flairs were found for \"{subreddit_name}\". " +
+                "Please specify which flairs to allow.",
+                view=view
+            )
             timedout = await view.wait()
 
             # DEBUG
