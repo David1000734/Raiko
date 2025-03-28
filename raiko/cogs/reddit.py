@@ -40,30 +40,37 @@ class Flair_View(View):
         Will retrieve only those buttons that have been clicked,
         that is, those with the success button style.
         '''
-        flair_list = []
+        disallowed_flairs = []
+        allowed_flairs = []
 
         # Iterate through all the buttons and find only those
         # with the sucess style (IE. has been clicked)
         for (x) in self.children:
+            # Select all that is clicked
             if (x.style == discord.ButtonStyle.success):
-                flair_list.append(x.label)
+                allowed_flairs.append(x.label)
 
-        if (not flair_list):
+            # Select all that is not clicked
+            if (x.style == discord.ButtonStyle.secondary):
+                # Create Blacklist
+                disallowed_flairs.append(x.label)
+
+        if (allowed_flairs):
+            # If something was clicked, build the flair list
+            self.clear_items()
+            await interaction.response.send_message(
+                f'Allowed flairs: {", ".join(allowed_flairs)}',
+                view=self
+            )
+
+            # Pass flair blacklist and end interaction
+            self.value = disallowed_flairs
+            self.stop()
+        else:
             # If no flairs were clicked, re-prompt
             button.disabled = True
             await self.ctx.send("Please specify at least one flair.")
             await interaction.response.edit_message(view=self)
-        else:
-            # If something was clicked, build the flair list
-            self.clear_items()
-            await interaction.response.send_message(
-                f"Allowed flairs: {", ".join(flair_list)}",
-                view=self
-            )
-
-            # Pass the list out and end interaction
-            self.value = flair_list
-            self.stop()
 
     @discord.ui.button(
         label="Allow All",
@@ -84,12 +91,12 @@ class Flair_View(View):
 
         self.clear_items()
         await interaction.response.send_message(
-            f"Allowed flairs: {", ".join(flair_list)}",
+            f'Allowed flairs: {", ".join(flair_list)}',
             view=self
         )
 
-        # A bit contradictory but to allow all, we will just send an empty list
-        self.value = None
+        # Empty list indicating no blacklist
+        self.value = []
         self.stop()
 
     async def on_timeout(self):
@@ -167,7 +174,7 @@ class Reddit(commands.Cog):
         )
 
     async def background_task(
-            self, sub_name: str, hook_URL: str, allowed_flairs: list,
+            self, sub_name: str, hook_URL: str, disallowed_flairs: list,
             post_limit: str = 5, sleep_time: str = 900,
             initial: bool = False
     ) -> None:
@@ -178,7 +185,7 @@ class Reddit(commands.Cog):
 
         :param sub_name: Name of the subreddit to be added.
         :param hook_URL: URL of the webhook this task will use to post.
-        :param allowed_flairs: List of flairs allowed from subreddit, if exist.
+        :param disallowed_flairs: Flairs not allowed from subreddit.
         :param post_limit: Specified limit to number of post to get.
         :param sleep_time: How long should the task wait in-between running.
         :param initial: If the initial X post should be put on discord.
@@ -208,7 +215,7 @@ class Reddit(commands.Cog):
 
             # Print whatever different items we found from above
             for (item) in (difference_list):
-                if (self.allowed_posts(item, allowed_flairs)):
+                if (item.link_flair_text not in disallowed_flairs):
                     # New post found, post it and update list
                     webhook.send(
                         item.title + ' ' + item.url +
@@ -243,30 +250,6 @@ class Reddit(commands.Cog):
             )
             flair_list = []
         return flair_list
-
-    def allowed_posts(self, post, allowed_flairs: list) -> bool:
-        '''
-        Function will determine which posts are allowed to be posted.
-        An order is followed to determine what is allowed.
-
-        1.) If the flair list is empty
-        2.) If the post does not have any flairs
-        3.) If any of the post's flair is in the list
-        '''
-        # If the list is empty, allow any posts
-        if (not allowed_flairs):
-            return True
-
-        # If the post dosen't have any flairs, allow it
-        if (post.link_flair_text is None):
-            return True
-
-        # If the post's flair is in the list, allow it
-        if (post.link_flair_text in allowed_flairs):
-            return True
-
-        # Otherwise, disallow
-        return False
 
     async def reddit_Add(self, ctx, subreddit_name, URL):
         """
@@ -347,7 +330,7 @@ class Reddit(commands.Cog):
         current_tasks = self.client.loop.create_task(
             self.background_task(
                 sub_name=subreddit_name, hook_URL=URL,
-                allowed_flairs=view
+                disallowed_flairs=view
             )
         )
 
