@@ -18,7 +18,7 @@ class Flair_View(View):
     def __init__(self, ctx, flair_list):
         '''
         Builds all the components needed for the flair buttons.
-        Uses a custom button class (Check_UnCheck_Button)
+        Uses a custom button class (Toggle_Button)
         '''
         super().__init__()
         self.ctx = ctx
@@ -27,7 +27,7 @@ class Flair_View(View):
         done_button = [x for x in self.children if x.custom_id == "Done"][0]
 
         for (flair) in flair_list:
-            self.add_item(Check_UnCheck_Button(flair, self, done_button))
+            self.add_item(Toggle_Button(flair, self, done_button))
 
     @discord.ui.button(
         disabled=True,
@@ -112,7 +112,7 @@ class Flair_View(View):
         return True
 
 
-class Check_UnCheck_Button(Button):
+class Toggle_Button(Button):
     def __init__(self, label, view, done_button):
         '''
         Serves as the actual flair buttons the user will interact
@@ -175,7 +175,7 @@ class Reddit(commands.Cog):
 
     async def background_task(
             self, sub_name: str, hook_URL: str, disallowed_flairs: list,
-            post_limit: str = 5, sleep_time: str = 900,
+            post_limit: str = 5, sleep_time: str = 3600,
             initial: bool = False
     ) -> None:
         """
@@ -206,9 +206,41 @@ class Reddit(commands.Cog):
         # Time loop here
         while not self.client.is_closed():
             new_submissions = []
-            # Gather the "new" posts
-            async for (item) in subreddit.hot(limit=post_limit):
-                new_submissions.append(item)
+
+            try:
+                # Gather the "new" posts
+                async for (item) in subreddit.hot(limit=post_limit):
+                    new_submissions.append(item)
+
+            except apc.exceptions.TooManyRequests as ex:
+                log.warning(
+                    f"{sub_name} encountered a Reddit Exception\n" +
+                    f"Too Many Request: {ex}"
+                )
+
+                # Sleep and skip this cycle
+                await asyncio.sleep(sleep_time)
+                continue
+
+            except apc.exceptions.RequestException as ex:
+                log.warning(
+                    f"{sub_name} encountered a Reddit Exception\n" +
+                    f"Too Many Request: {ex}"
+                )
+
+                # Sleep and skip this cycle
+                await asyncio.sleep(sleep_time)
+                continue
+            except apc.exceptions as ex:
+                log.warning(
+                    "A reddit exception occured.\n" + ex
+                )
+                raise
+
+            except Exception as ex:
+                log.info(
+                    f"{sub_name} encountered an unknown Exception\n" + ex)
+                raise
 
             # Get the different items between these two list
             difference_list = list(set(new_submissions).difference(queue))
@@ -300,10 +332,7 @@ class Reddit(commands.Cog):
 
         # *************** Existance of Flairs ***************
         subreddit_flair_list = await self.flair_finder(subreddit)
-        view = None
-        # https://www.youtube.com/watch?v=kNUuYEWGOxA
-        # https://www.reddit.com/r/redditdev/comments/njj4y0/getting_list_of_available_flairs_for_a_subreddit/
-        # https://www.reddit.com/r/redditdev/comments/njj4y0/getting_list_of_available_flairs_for_a_subreddit/
+        view = []
 
         # Determine if the subreddit has flairs
         if (subreddit_flair_list):
